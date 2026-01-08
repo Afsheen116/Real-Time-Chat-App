@@ -1,3 +1,9 @@
+
+const Message = require("./models/message");
+
+require("dotenv").config();
+const connectDB = require("./config/db");
+connectDB();
 const express = require("express");
 const http = require("http");
 const { Server } = require("socket.io");
@@ -14,7 +20,17 @@ const io = new Server(server, {
   },
 });
 
+app.get("/messages", async (req, res) => {
+  try {
+    const messages = await Message.find().sort({ createdAt: 1 });
+    res.json(messages);
+  } catch (error) {
+    res.status(500).json({ error: "Failed to fetch messages" });
+  }
+});
+
 let onlineUsers = [];
+
 
 io.on("connection", (socket) => {
   console.log("User connected:", socket.id);
@@ -29,9 +45,24 @@ io.on("connection", (socket) => {
     io.emit("online_users", onlineUsers);
   });
 
-  socket.on("send_message", (data) => {
-    socket.broadcast.emit("receive_message", data);
-  });
+socket.on("send_message", async (data) => {
+  try {
+    //Save message to DB
+    const newMessage = new Message({
+      sender: data.sender,
+      receiver: data.receiver,
+      content: data.content,
+    });
+
+    const savedMessage = await newMessage.save();
+
+    //  Send saved message to everyone
+    io.emit("receive_message", savedMessage);
+  } catch (error) {
+    console.error("Error saving message:", error.message);
+  }
+});
+
 
   socket.on("typing", (username) => {
     socket.broadcast.emit("user_typing", username);

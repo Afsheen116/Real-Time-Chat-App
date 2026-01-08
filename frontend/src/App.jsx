@@ -1,6 +1,8 @@
 import { useEffect, useState, useRef } from "react";
 import io from "socket.io-client";
 import "./index.css";
+import axios from "axios";
+
 
 const socket = io("http://localhost:5000");
 
@@ -35,6 +37,16 @@ function App() {
 
     return () => socket.off("online_users");
   }, []);
+  useEffect(() => {
+  axios
+    .get("http://localhost:5000/messages")
+    .then((res) => {
+      setChat(res.data);
+    })
+    .catch((err) => {
+      console.error("Failed to load messages:", err);
+    });
+}, []);
 
   // ✍️ Typing indicator
   useEffect(() => {
@@ -45,6 +57,8 @@ function App() {
     socket.on("user_stop_typing", () => {
       setTypingUser("");
     });
+    
+
 
     return () => {
       socket.off("user_typing");
@@ -55,16 +69,20 @@ function App() {
   const toggleTheme = () => {
     setTheme(theme === "light" ? "dark" : "light");
   };
+const sendMessage = () => {
+  if (message.trim() && username.trim()) {
+    const msgData = {
+      sender: username,
+      receiver: "Global", // for now
+      content: message,
+    };
 
-  const sendMessage = () => {
-    if (message.trim() && username.trim()) {
-      const msgData = { username, message };
-      socket.emit("send_message", msgData);
-      socket.emit("stop_typing");
-      setChat((prev) => [...prev, msgData]);
-      setMessage("");
-    }
-  };
+    socket.emit("send_message", msgData);
+    socket.emit("stop_typing");
+    setMessage("");
+  }
+};
+
 
   return (
     <div className="chat-container">
@@ -92,21 +110,22 @@ function App() {
           }
         }}
       />
+{/* Chat Messages */}
+<div className="chat-box">
+  {chat.map((msg, i) => (
+    <div
+      key={i}
+      className={`message ${
+        msg.sender === username ? "you" : "other"
+      }`}
+    >
+      <strong>{msg.sender}</strong>
+      <div>{msg.content}</div>
+    </div>
+  ))}
+</div>
 
-      {/* Chat Messages */}
-      <div className="chat-box">
-        {chat.map((msg, i) => (
-          <div
-            key={i}
-            className={`message ${
-              msg.username === username ? "you" : "other"
-            }`}
-          >
-            <strong>{msg.username}</strong>
-            <div>{msg.message}</div>
-          </div>
-        ))}
-      </div>
+
 
       {/* Typing Indicator */}
       {typingUser && typingUser !== username && (
