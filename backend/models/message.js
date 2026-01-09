@@ -2,11 +2,12 @@ const mongoose = require("mongoose");
 
 const messageSchema = new mongoose.Schema(
   {
-    sender: {
-      type: String,
+    conversationId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Conversation",
       required: true,
     },
-    receiver: {
+    sender: {
       type: String,
       required: true,
     },
@@ -19,3 +20,4 @@ const messageSchema = new mongoose.Schema(
 );
 
 module.exports = mongoose.model("Message", messageSchema);
+

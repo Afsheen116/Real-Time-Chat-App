@@ -14,6 +14,7 @@ function App() {
   const [onlineUsers, setOnlineUsers] = useState([]);
   const [typingUser, setTypingUser] = useState("");
   const typingTimeoutRef = useRef(null);
+  const [selectedChat, setSelectedChat] = useState(null);
 
   // 🌙 Theme
   useEffect(() => {
@@ -38,15 +39,15 @@ function App() {
     return () => socket.off("online_users");
   }, []);
   useEffect(() => {
-  axios
-    .get("http://localhost:5000/messages")
-    .then((res) => {
-      setChat(res.data);
-    })
-    .catch((err) => {
-      console.error("Failed to load messages:", err);
-    });
-}, []);
+    axios
+      .get("http://localhost:5000/messages")
+      .then((res) => {
+        setChat(res.data);
+      })
+      .catch((err) => {
+        console.error("Failed to load messages:", err);
+      });
+  }, []);
 
   // ✍️ Typing indicator
   useEffect(() => {
@@ -57,7 +58,7 @@ function App() {
     socket.on("user_stop_typing", () => {
       setTypingUser("");
     });
-    
+
 
 
     return () => {
@@ -69,34 +70,34 @@ function App() {
   const toggleTheme = () => {
     setTheme(theme === "light" ? "dark" : "light");
   };
-const sendMessage = () => {
-  if (message.trim() && username.trim()) {
-    const msgData = {
-      sender: username,
-      receiver: "Global", // for now
-      content: message,
-    };
+  const sendMessage = () => {
+    if (message.trim() && username.trim()) {
+      const msgData = {
+        sender: username,
+        receiver: "Global", // for now
+        content: message,
+      };
 
-    socket.emit("send_message", msgData);
-    socket.emit("stop_typing");
-    setMessage("");
-  }
-};
+      socket.emit("send_message", msgData);
+      socket.emit("stop_typing");
+      setMessage("");
+    }
+  };
 
 
   return (
-    <div className="chat-container">
-      {/* Header */}
-      <div className="chat-header">
-        <span>Chatify</span>
-        <button className="toggle-btn" onClick={toggleTheme}>
-          {theme === "light" ? "🌙 Dark" : "☀️ Light"}
-        </button>
+  <div className="app-container">
+
+    {/* 🔹 SIDEBAR (Contacts / Users List) */}
+    <div className={`sidebar ${selectedChat ? "hide-mobile" : ""}`}>
+
+      <div className="sidebar-header">
+        <h3>Chatify</h3>
       </div>
 
-      {/* Online Users */}
+      {/* 🟢 Online Users */}
       <div className="online-users">
-        🟢 Online: {onlineUsers.join(", ")}
+        🟢 Online
       </div>
 
       {/* Username */}
@@ -110,79 +111,109 @@ const sendMessage = () => {
           }
         }}
       />
-{/* Chat Messages */}
-<div className="chat-box">
-  {chat.map((msg, i) => (
-    <div
-      key={i}
-      className={`message ${
-        msg.sender === username ? "you" : "other"
-      }`}
-    >
-      <strong>{msg.sender}</strong>
-      <div>{msg.content}</div>
+
+      {/* Contacts */}
+      <div className="contacts">
+        {onlineUsers
+          .filter((user) => user !== username)
+          .map((user) => (
+            <div
+              key={user}
+              className="contact"
+              onClick={() => setSelectedChat(user)}
+            >
+              <strong>{user}</strong>
+              <p>Tap to chat</p>
+            </div>
+          ))}
+      </div>
     </div>
-  ))}
-</div>
 
+    {/* 🔹 CHAT WINDOW */}
+    <div className={`chat-window ${!selectedChat ? "hide-mobile" : ""}`}>
 
+      {/* Chat Header */}
+      <div className="chat-header">
+        <button
+          className="back-btn"
+          onClick={() => setSelectedChat(null)}
+        >
+          ←
+        </button>
 
-      {/* Typing Indicator */}
-      {typingUser && typingUser !== username && (
-        <div style={{ fontSize: "13px", padding: "4px 14px", opacity: 0.7 }}>
-          ✍️ {typingUser} is typing...
+        <span>{selectedChat || "Select a chat"}</span>
+
+        <button className="toggle-btn" onClick={toggleTheme}>
+          {theme === "light" ? "🌙" : "☀️"}
+        </button>
+      </div>
+
+      {/* EMPTY STATE */}
+      {!selectedChat ? (
+        <div className="empty-chat">
+          Select a chat to start messaging
         </div>
+      ) : (
+        <>
+          {/* 💬 Messages */}
+          <div className="chat-box">
+            {chat
+              .filter(
+                (msg) =>
+                  msg.sender === selectedChat ||
+                  msg.receiver === selectedChat ||
+                  msg.sender === username
+              )
+              .map((msg, i) => (
+                <div
+                  key={i}
+                  className={`message ${
+                    msg.sender === username ? "you" : "other"
+                  }`}
+                >
+                  <strong>{msg.sender}</strong>
+                  <div>{msg.content}</div>
+                </div>
+              ))}
+          </div>
+
+          {/* ✍️ Typing Indicator */}
+          {typingUser && typingUser !== username && (
+            <div className="typing-indicator">
+              ✍️ {typingUser} is typing...
+            </div>
+          )}
+
+          {/* 🔽 Input */}
+          <div className="chat-input">
+            <input
+              placeholder="Type a message..."
+              value={message}
+              onChange={(e) => {
+                setMessage(e.target.value);
+                if (!username.trim()) return;
+
+                socket.emit("typing", username);
+
+                if (typingTimeoutRef.current) {
+                  clearTimeout(typingTimeoutRef.current);
+                }
+
+                typingTimeoutRef.current = setTimeout(() => {
+                  socket.emit("stop_typing");
+                }, 1000);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") sendMessage();
+              }}
+            />
+            <button onClick={sendMessage}>Send</button>
+          </div>
+        </>
       )}
-
-      {/* Input */}
-   <div className="chat-input">
-  <input
-    placeholder="Type a message..."
-    value={message}
-    onChange={(e) => {
-      setMessage(e.target.value);
-
-      if (!username.trim()) return;
-
-      // Emit typing event
-      socket.emit("typing", username);
-
-      // Clear previous timeout
-      if (typingTimeoutRef.current) {
-        clearTimeout(typingTimeoutRef.current);
-      }
-
-      // Set new timeout (1 second)
-      typingTimeoutRef.current = setTimeout(() => {
-        socket.emit("stop_typing");
-      }, 1000);
-    }}
-    onKeyDown={(e) => {
-      if (e.key === "Enter") {
-        sendMessage();
-        socket.emit("stop_typing");
-
-        if (typingTimeoutRef.current) {
-          clearTimeout(typingTimeoutRef.current);
-        }
-      }
-    }}
-  />
-  <button
-    onClick={() => {
-      sendMessage();
-      socket.emit("stop_typing");
-
-      if (typingTimeoutRef.current) {
-        clearTimeout(typingTimeoutRef.current);
-      }
-    }}
-  >
-    Send
-  </button>
-</div>
     </div>
-  );
+  </div>
+);
 }
 
 export default App;

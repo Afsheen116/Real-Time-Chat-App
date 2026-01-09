@@ -1,40 +1,42 @@
-
-const Message = require("./models/message");
-
 require("dotenv").config();
-const connectDB = require("./config/db");
-connectDB();
+
 const express = require("express");
 const http = require("http");
-const { Server } = require("socket.io");
 const cors = require("cors");
+const { Server } = require("socket.io");
+
+const connectDB = require("./config/db");
+connectDB();
+
+const Message = require("./models/message");
+const Conversation = require("./models/conversation");
+
+const conversationRoutes = require("./routes/conversationRoutes");
+const messageRoutes = require("./routes/messageRoutes");
 
 const app = express();
 app.use(cors());
+app.use(express.json());
+
+/* 🔹 API Routes */
+app.use("/conversations", conversationRoutes);
+app.use("/messages", messageRoutes);
 
 const server = http.createServer(app);
 
+/* 🔹 Socket Setup */
 const io = new Server(server, {
   cors: {
     origin: "*",
   },
 });
 
-app.get("/messages", async (req, res) => {
-  try {
-    const messages = await Message.find().sort({ createdAt: 1 });
-    res.json(messages);
-  } catch (error) {
-    res.status(500).json({ error: "Failed to fetch messages" });
-  }
-});
-
 let onlineUsers = [];
-
 
 io.on("connection", (socket) => {
   console.log("User connected:", socket.id);
 
+  /* 🟢 User online */
   socket.on("user_online", (username) => {
     socket.username = username;
 
@@ -45,25 +47,33 @@ io.on("connection", (socket) => {
     io.emit("online_users", onlineUsers);
   });
 
-socket.on("send_message", async (data) => {
-  try {
-    //Save message to DB
-    const newMessage = new Message({
-      sender: data.sender,
-      receiver: data.receiver,
-      content: data.content,
-    });
+  /* 💬 Send Message (Conversation-based) */
+  socket.on("send_message", async (data) => {
+    try {
+      const { conversationId, sender, content } = data;
 
-    const savedMessage = await newMessage.save();
+      if (!conversationId || !sender || !content) {
+        return;
+      }
 
-    //  Send saved message to everyone
-    io.emit("receive_message", savedMessage);
-  } catch (error) {
-    console.error("Error saving message:", error.message);
-  }
-});
+      const message = await Message.create({
+        conversationId,
+        sender,
+        content,
+      });
 
+      await Conversation.findByIdAndUpdate(conversationId, {
+        lastMessage: content,
+      });
 
+      // Emit message ONLY to this conversation
+      io.emit("receive_message", message);
+    } catch (err) {
+      console.error("Error saving message:", err.message);
+    }
+  });
+
+  /* ✍️ Typing */
   socket.on("typing", (username) => {
     socket.broadcast.emit("user_typing", username);
   });
@@ -72,6 +82,7 @@ socket.on("send_message", async (data) => {
     socket.broadcast.emit("user_stop_typing");
   });
 
+  /* 🔴 Disconnect */
   socket.on("disconnect", () => {
     if (socket.username) {
       onlineUsers = onlineUsers.filter(
@@ -80,16 +91,12 @@ socket.on("send_message", async (data) => {
       io.emit("online_users", onlineUsers);
     }
 
-    // ✅ prevent stuck typing indicator
     socket.broadcast.emit("user_stop_typing");
-
     console.log("User disconnected:", socket.id);
   });
 });
 
+/* 🚀 Server Start */
 server.listen(5000, () => {
   console.log("Server running on port 5000");
 });
-
-  
-
