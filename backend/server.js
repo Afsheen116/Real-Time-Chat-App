@@ -32,7 +32,6 @@ const io = new Server(server, {
 });
 
 let onlineUsers = [];
-
 io.on("connection", (socket) => {
   console.log("User connected:", socket.id);
 
@@ -47,14 +46,19 @@ io.on("connection", (socket) => {
     io.emit("online_users", onlineUsers);
   });
 
+  /* 🔗 Join conversation room */
+  socket.on("join_conversation", (conversationId) => {
+    socket.join(conversationId);
+    console.log(
+      `Socket ${socket.id} joined conversation ${conversationId}`
+    );
+  });
+
   /* 💬 Send Message (Conversation-based) */
   socket.on("send_message", async (data) => {
     try {
       const { conversationId, sender, content } = data;
-
-      if (!conversationId || !sender || !content) {
-        return;
-      }
+      if (!conversationId || !sender || !content) return;
 
       const message = await Message.create({
         conversationId,
@@ -66,14 +70,14 @@ io.on("connection", (socket) => {
         lastMessage: content,
       });
 
-      // Emit message ONLY to this conversation
-      io.emit("receive_message", message);
+      // ✅ Emit to conversation room ONLY
+      io.to(conversationId).emit("receive_message", message);
     } catch (err) {
       console.error("Error saving message:", err.message);
     }
   });
 
-  /* ✍️ Typing */
+  /* ✍️ Typing indicator */
   socket.on("typing", (username) => {
     socket.broadcast.emit("user_typing", username);
   });
@@ -82,7 +86,7 @@ io.on("connection", (socket) => {
     socket.broadcast.emit("user_stop_typing");
   });
 
-  /* 🔴 Disconnect */
+  /* 🔴 Disconnect — MUST stay INSIDE connection */
   socket.on("disconnect", () => {
     if (socket.username) {
       onlineUsers = onlineUsers.filter(
@@ -94,9 +98,4 @@ io.on("connection", (socket) => {
     socket.broadcast.emit("user_stop_typing");
     console.log("User disconnected:", socket.id);
   });
-});
-
-/* 🚀 Server Start */
-server.listen(5000, () => {
-  console.log("Server running on port 5000");
 });

@@ -19,5 +19,8 @@ const messageSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
+// 🚀 Optimized for chat history loading
+messageSchema.index({ conversationId: 1, createdAt: 1 });
+
 module.exports = mongoose.model("Message", messageSchema);
 

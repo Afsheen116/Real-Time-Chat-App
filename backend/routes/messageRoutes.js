@@ -1,33 +1,21 @@
 const express = require("express");
-const Message = require("../models/message");
-const Conversation = require("../models/conversation");
-
 const router = express.Router();
+const Message = require("../models/message");
 
-// Get messages for a conversation
+/**
+ * ✅ Get messages of a conversation
+ * GET /messages/:conversationId
+ */
 router.get("/:conversationId", async (req, res) => {
-  const messages = await Message.find({
-    conversationId: req.params.conversationId,
-  }).sort({ createdAt: 1 });
+  try {
+    const messages = await Message.find({
+      conversationId: req.params.conversationId,
+    }).sort({ createdAt: 1 });
 
-  res.json(messages);
-});
-
-// Save message
-router.post("/", async (req, res) => {
-  const { conversationId, sender, content } = req.body;
-
-  const message = await Message.create({
-    conversationId,
-    sender,
-    content,
-  });
-
-  await Conversation.findByIdAndUpdate(conversationId, {
-    lastMessage: content,
-  });
-
-  res.json(message);
+    res.json(messages);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 module.exports = router;
