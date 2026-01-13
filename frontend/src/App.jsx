@@ -2,6 +2,10 @@ import { useEffect, useState, useRef } from "react";
 import io from "socket.io-client";
 import axios from "axios";
 import "./index.css";
+import Login from "./pages/login";
+import OtpVerify from "./pages/OTPVerify";
+
+
 
 const socket = io("http://localhost:5000");
 
@@ -15,6 +19,29 @@ function App() {
   const [typingUser, setTypingUser] = useState("");
   const [theme, setTheme] = useState("light");
   const typingTimeoutRef = useRef(null);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [user, setUser] = useState(null);
+  const [authStep, setAuthStep] = useState("login"); // login | otp
+  const [otpPayload, setOtpPayload] = useState(null);
+  const logout = () => {
+    localStorage.clear();
+    setIsAuthenticated(false);
+    setUser(null);
+    setAuthStep("login");
+  };
+
+
+  /* 🔹 Auto Login */
+  useEffect(() => {
+    const token = localStorage.getItem("token");
+    const savedUser = localStorage.getItem("user");
+
+    if (token && savedUser) {
+      setIsAuthenticated(true);
+      setUser(JSON.parse(savedUser));
+    }
+  }, []);
+
 
   /* 🌙 Theme */
   useEffect(() => {
@@ -79,8 +106,40 @@ function App() {
     setMessage("");
     socket.emit("stop_typing");
   };
+  /* 🔐 AUTH GATE — MUST BE BEFORE CHAT UI RETURN */
+  if (!isAuthenticated) {
+    if (authStep === "login") {
+      return (
+        <Login
+          onOtpSent={(data) => {
+            setOtpPayload(data);
+            setAuthStep("otp");
+          }}
+        />
+      );
+    }
+
+    if (authStep === "otp") {
+      return (
+        <OtpVerify
+          payload={otpPayload}
+          onSuccess={(data) => {
+            localStorage.setItem("token", data.token);
+            localStorage.setItem("user", JSON.stringify(data.user));
+            setUser(data.user);
+            setIsAuthenticated(true);
+          }}
+        />
+      );
+    }
+
+    return <div>Loading...</div>;
+  }
+
+
 
   return (
+
     <div className="app-container">
 
       {/* 🔹 SIDEBAR */}
@@ -117,6 +176,8 @@ function App() {
           })}
         </div>
       </div>
+      <button onClick={logout}>Logout</button>
+
 
       {/* 🔹 CHAT WINDOW */}
       <div className={`chat-window ${!selectedConversation ? "hide-mobile" : ""}`}>
@@ -143,9 +204,8 @@ function App() {
               {chat.map((msg, i) => (
                 <div
                   key={i}
-                  className={`message ${
-                    msg.sender === username ? "you" : "other"
-                  }`}
+                  className={`message ${msg.sender === username ? "you" : "other"
+                    }`}
                 >
                   <strong>{msg.sender}</strong>
                   <div>{msg.content}</div>

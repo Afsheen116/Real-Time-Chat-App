@@ -8,94 +8,76 @@ const { Server } = require("socket.io");
 const connectDB = require("./config/db");
 connectDB();
 
+/* 🔹 Models */
 const Message = require("./models/message");
 const Conversation = require("./models/conversation");
 
+/* 🔹 Routes */
+const authRoutes = require("./routes/authRoutes");
 const conversationRoutes = require("./routes/conversationRoutes");
 const messageRoutes = require("./routes/messageRoutes");
 
+/* 🔹 App init (MUST COME FIRST) */
 const app = express();
 app.use(cors());
 app.use(express.json());
 
 /* 🔹 API Routes */
+app.use("/auth", authRoutes);
 app.use("/conversations", conversationRoutes);
 app.use("/messages", messageRoutes);
 
+/* 🔹 Server + Socket */
 const server = http.createServer(app);
 
-/* 🔹 Socket Setup */
 const io = new Server(server, {
-  cors: {
-    origin: "*",
-  },
+  cors: { origin: "*" },
 });
 
 let onlineUsers = [];
+
 io.on("connection", (socket) => {
   console.log("User connected:", socket.id);
 
   /* 🟢 User online */
   socket.on("user_online", (username) => {
     socket.username = username;
-
-    if (!onlineUsers.includes(username)) {
-      onlineUsers.push(username);
-    }
-
+    if (!onlineUsers.includes(username)) onlineUsers.push(username);
     io.emit("online_users", onlineUsers);
   });
 
-  /* 🔗 Join conversation room */
+  /* 🔗 Join conversation */
   socket.on("join_conversation", (conversationId) => {
     socket.join(conversationId);
-    console.log(
-      `Socket ${socket.id} joined conversation ${conversationId}`
-    );
   });
 
-  /* 💬 Send Message (Conversation-based) */
-  socket.on("send_message", async (data) => {
-    try {
-      const { conversationId, sender, content } = data;
-      if (!conversationId || !sender || !content) return;
+  /* 💬 Send message */
+  socket.on("send_message", async ({ conversationId, sender, content }) => {
+    if (!conversationId || !sender || !content) return;
 
-      const message = await Message.create({
-        conversationId,
-        sender,
-        content,
-      });
+    const message = await Message.create({
+      conversationId,
+      sender,
+      content,
+    });
 
-      await Conversation.findByIdAndUpdate(conversationId, {
-        lastMessage: content,
-      });
+    await Conversation.findByIdAndUpdate(conversationId, {
+      lastMessage: content,
+    });
 
-      // ✅ Emit to conversation room ONLY
-      io.to(conversationId).emit("receive_message", message);
-    } catch (err) {
-      console.error("Error saving message:", err.message);
-    }
+    io.to(conversationId).emit("receive_message", message);
   });
 
-  /* ✍️ Typing indicator */
-  socket.on("typing", (username) => {
-    socket.broadcast.emit("user_typing", username);
-  });
-
-  socket.on("stop_typing", () => {
-    socket.broadcast.emit("user_stop_typing");
-  });
-
-  /* 🔴 Disconnect — MUST stay INSIDE connection */
+  /* 🔴 Disconnect */
   socket.on("disconnect", () => {
     if (socket.username) {
-      onlineUsers = onlineUsers.filter(
-        (user) => user !== socket.username
-      );
+      onlineUsers = onlineUsers.filter((u) => u !== socket.username);
       io.emit("online_users", onlineUsers);
     }
-
-    socket.broadcast.emit("user_stop_typing");
     console.log("User disconnected:", socket.id);
   });
+});
+
+server.listen(5000, () => {
+  console.log("Server running on port 5000");
 });
