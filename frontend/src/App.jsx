@@ -17,9 +17,35 @@ function App() {
 
   /* 💬 CHAT */
   const [conversations, setConversations] = useState([]);
-  const [selectedConversation, setSelectedConversation] = useState(null);
+  const [selectedUser, setSelectedUser] = useState(null); // phoneNumber
   const [chat, setChat] = useState([]);
   const [message, setMessage] = useState("");
+  const [newChatNumber, setNewChatNumber] = useState("");
+  const startNewChat = async () => {
+    if (!newChatNumber || newChatNumber === user.phoneNumber) {
+      return alert("Enter a valid phone number");
+    }
+
+    try {
+      const res = await axios.post("http://localhost:5000/conversations", {
+        user1: user.phoneNumber,
+        user2: newChatNumber,
+      });
+
+      setConversations((prev) => {
+        const exists = prev.find((c) => c._id === res.data._id);
+        return exists ? prev : [res.data, ...prev];
+      });
+
+      setSelectedConversation(res.data);
+      socket.emit("join_conversation", res.data._id);
+      setChat([]);
+      setNewChatNumber("");
+    } catch (err) {
+      alert("Could not start chat");
+    }
+  };
+
 
   /* 🔹 AUTO LOGIN */
   useEffect(() => {
@@ -47,6 +73,19 @@ function App() {
       socket.off("receive_message");
     };
   }, [isAuthenticated, user]);
+  useEffect(() => {
+    socket.on("conversation_updated", (updatedConv) => {
+      setConversations((prev) => {
+        const filtered = prev.filter(
+          (c) => c._id !== updatedConv._id
+        );
+        return [updatedConv, ...filtered];
+      });
+    });
+
+    return () => socket.off("conversation_updated");
+  }, []);
+
 
   /* 📥 LOAD CONVERSATIONS */
   useEffect(() => {
@@ -65,7 +104,7 @@ function App() {
     setUser(null);
     setIsAuthenticated(false);
     setAuthStep("login");
-    setSelectedConversation(null);
+    setSelectedUser(null);
     setChat([]);
   };
 
@@ -97,14 +136,35 @@ function App() {
     return null;
   }
 
+  /* 💬 SEND MESSAGE */
+  const sendMessage = () => {
+    if (!message.trim() || !selectedUser) return;
+
+    socket.emit("send_message", {
+      sender: user.phoneNumber,
+      receiver: selectedUser,
+      content: message,
+    });
+
+    setMessage("");
+  };
+
   /* 🔓 CHAT UI */
   return (
     <div className="app-container">
-      {/* SIDEBAR */}
+      {/* 🔹 SIDEBAR */}
       <div className="sidebar">
         <div className="sidebar-header">
           <h3>Chatify</h3>
           <button onClick={logout}>Logout</button>
+        </div>
+        <div className="new-chat">
+          <input
+            placeholder="Enter phone number"
+            value={newChatNumber}
+            onChange={(e) => setNewChatNumber(e.target.value)}
+          />
+          <button onClick={startNewChat}>Start Chat</button>
         </div>
 
         <div className="contacts">
@@ -123,14 +183,9 @@ function App() {
               <div
                 key={c._id}
                 className="contact"
-                onClick={async () => {
-                  setSelectedConversation(c);
-                  socket.emit("join_conversation", c._id);
-
-                  const res = await axios.get(
-                    `http://localhost:5000/messages/${c._id}`
-                  );
-                  setChat(res.data);
+                onClick={() => {
+                  setSelectedUser(otherUser);
+                  setChat([]); // messages will arrive via socket
                 }}
               >
                 <strong>{otherUser}</strong>
@@ -141,27 +196,20 @@ function App() {
         </div>
       </div>
 
-      {/* CHAT WINDOW */}
+      {/* 🔹 CHAT WINDOW */}
       <div className="chat-window">
-        {!selectedConversation ? (
+        {!selectedUser ? (
           <div className="empty-chat">Select a chat</div>
         ) : (
           <>
-            <div className="chat-header">
-              {
-                selectedConversation.participants.find(
-                  (p) => p !== user.phoneNumber
-                )
-              }
-            </div>
+            <div className="chat-header">{selectedUser}</div>
 
             <div className="chat-box">
               {chat.map((msg, i) => (
                 <div
                   key={i}
-                  className={`message ${
-                    msg.sender === user.phoneNumber ? "you" : "other"
-                  }`}
+                  className={`message ${msg.sender === user.phoneNumber ? "you" : "other"
+                    }`}
                 >
                   <div>{msg.content}</div>
                 </div>
@@ -174,14 +222,7 @@ function App() {
                 value={message}
                 onChange={(e) => setMessage(e.target.value)}
                 onKeyDown={(e) => {
-                  if (e.key === "Enter" && message.trim()) {
-                    socket.emit("send_message", {
-                      conversationId: selectedConversation._id,
-                      sender: user.phoneNumber,
-                      content: message,
-                    });
-                    setMessage("");
-                  }
+                  if (e.key === "Enter") sendMessage();
                 }}
               />
             </div>
@@ -193,3 +234,4 @@ function App() {
 }
 
 export default App;
+

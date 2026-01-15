@@ -3,28 +3,26 @@ const router = express.Router();
 const Conversation = require("../models/conversation");
 
 /**
- * ✅ Create or get existing conversation (1-to-1)
+ * ✅ Create or get existing 1-to-1 conversation
  * POST /conversations
- * body: { user1, user2 }
+ * body: { sender, receiver }
  */
 router.post("/", async (req, res) => {
   try {
-    const { user1, user2 } = req.body;
+    const { sender, receiver } = req.body;
 
-    if (!user1 || !user2) {
-      return res.status(400).json({ error: "Both users are required" });
+    if (!sender || !receiver) {
+      return res.status(400).json({ error: "Sender and receiver are required" });
     }
 
-    // 🔑 Ensure consistent order to prevent duplicates
-    const participants = [user1, user2].sort();
-
+    // 🔑 One conversation per user pair
     let conversation = await Conversation.findOne({
-      participants,
+      participants: { $all: [sender, receiver] },
     });
 
     if (!conversation) {
       conversation = await Conversation.create({
-        participants,
+        participants: [sender, receiver],
       });
     }
 
@@ -36,12 +34,14 @@ router.post("/", async (req, res) => {
 
 /**
  * ✅ Get all conversations of a user (Sidebar)
- * GET /conversations/:username
+ * GET /conversations/:phoneNumber
  */
-router.get("/:username", async (req, res) => {
+router.get("/:phoneNumber", async (req, res) => {
   try {
+    const { phoneNumber } = req.params;
+
     const conversations = await Conversation.find({
-      participants: req.params.username,
+      participants: phoneNumber,
     }).sort({ updatedAt: -1 });
 
     res.json(conversations);
@@ -51,3 +51,4 @@ router.get("/:username", async (req, res) => {
 });
 
 module.exports = router;
+  
