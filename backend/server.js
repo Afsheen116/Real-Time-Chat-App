@@ -17,7 +17,7 @@ const authRoutes = require("./routes/authRoutes");
 const conversationRoutes = require("./routes/conversationRoutes");
 const messageRoutes = require("./routes/messageRoutes");
 
-/* 🔹 App init */
+/* 🔹 App init (MUST COME FIRST) */
 const app = express();
 app.use(cors());
 app.use(express.json());
@@ -39,71 +39,45 @@ let onlineUsers = [];
 io.on("connection", (socket) => {
   console.log("User connected:", socket.id);
 
-  /* 🟢 User online (identity = phoneNumber) */
-  socket.on("user_online", (phoneNumber) => {
-    socket.phoneNumber = phoneNumber;
-
-    if (!onlineUsers.includes(phoneNumber)) {
-      onlineUsers.push(phoneNumber);
-    }
-
+  /* 🟢 User online */
+  socket.on("user_online", (username) => {
+    socket.username = username;
+    if (!onlineUsers.includes(username)) onlineUsers.push(username);
     io.emit("online_users", onlineUsers);
   });
 
-  /* 🔗 Join conversation room */
+  /* 🔗 Join conversation */
   socket.on("join_conversation", (conversationId) => {
     socket.join(conversationId);
   });
 
-  /* 💬 Send message (AUTO CREATE CONVERSATION) */
-  socket.on("send_message", async ({ sender, receiver, content }) => {
-    try {
-      if (!sender || !receiver || !content) return;
+  /* 💬 Send message */
+  socket.on("send_message", async ({ conversationId, sender, content }) => {
+    if (!conversationId || !sender || !content) return;
 
-      let conversation = await Conversation.findOne({
-        participants: { $all: [sender, receiver] },
-      });
+    const message = await Message.create({
+      conversationId,
+      sender,
+      content,
+    });
 
-      if (!conversation) {
-        conversation = await Conversation.create({
-          participants: [sender, receiver],
-        });
-      }
+    await Conversation.findByIdAndUpdate(conversationId, {
+      lastMessage: content,
+    });
 
-      const message = await Message.create({
-        conversationId: conversation._id,
-        sender,
-        content,
-      });
-
-      conversation.lastMessage = content;
-      await conversation.save();
-
-      io.to(conversation._id.toString()).emit(
-        "receive_message",
-        message
-      );
-      io.emit("conversation_updated", conversation);
-
-    } catch (err) {
-      console.error("Error sending message:", err.message);
-    }
+    io.to(conversationId).emit("receive_message", message);
   });
 
   /* 🔴 Disconnect */
   socket.on("disconnect", () => {
-    if (socket.phoneNumber) {
-      onlineUsers = onlineUsers.filter(
-        (u) => u !== socket.phoneNumber
-      );
+    if (socket.username) {
+      onlineUsers = onlineUsers.filter((u) => u !== socket.username);
       io.emit("online_users", onlineUsers);
     }
-
     console.log("User disconnected:", socket.id);
   });
 });
 
-/* 🔹 Start server */
 server.listen(5000, () => {
   console.log("Server running on port 5000");
 });
