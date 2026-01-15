@@ -26,7 +26,13 @@ router.post("/request", async (req, res) => {
 
 /* 🔐 VERIFY OTP */
 router.post("/verify", async (req, res) => {
+  console.log("🔥 /auth/verify HIT");
+  console.log("BODY:", req.body);
   const { phoneNumber, otp } = req.body;
+  console.log("PHONE:", phoneNumber);
+  console.log("OTP:", otp, typeof otp);
+
+
 
   if (
     !global.otpStore ||

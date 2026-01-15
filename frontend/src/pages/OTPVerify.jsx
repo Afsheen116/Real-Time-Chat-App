@@ -1,7 +1,7 @@
 import { useState } from "react";
 import axios from "axios";
 
-export default function OtpVerify({ payload, onSuccess }) {
+export default function OTPVerify({ payload, onSuccess }) {
   const [otp, setOtp] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -11,8 +11,7 @@ export default function OtpVerify({ payload, onSuccess }) {
     setLoading(true);
     try {
       const res = await axios.post("http://localhost:5000/auth/verify", {
-        phoneNumber: payload.mode === "phone" ? payload.value : undefined,
-        email: payload.mode === "email" ? payload.value : undefined,
+        phoneNumber: payload.phoneNumber,
         otp,
       });
 
@@ -21,7 +20,7 @@ export default function OtpVerify({ payload, onSuccess }) {
       localStorage.setItem("token", token);
       localStorage.setItem("user", JSON.stringify(user));
 
-      onSuccess();
+      onSuccess(user);
     } catch (err) {
       alert("Invalid OTP");
     } finally {
@@ -45,4 +44,5 @@ export default function OtpVerify({ payload, onSuccess }) {
     </div>
   );
 }
+
 

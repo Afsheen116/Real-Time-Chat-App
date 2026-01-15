@@ -1,112 +1,75 @@
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState } from "react";
 import io from "socket.io-client";
 import axios from "axios";
 import "./index.css";
+
 import Login from "./pages/login";
 import OtpVerify from "./pages/OTPVerify";
 
-
-
-const socket = io("http://localhost:5000");
+const socket = io("http://localhost:5000", { autoConnect: false });
 
 function App() {
-  const [username, setUsername] = useState("");
-  const [conversations, setConversations] = useState([]);
-  const [selectedConversation, setSelectedConversation] = useState(null);
-  const [chat, setChat] = useState([]);
-  const [message, setMessage] = useState("");
-  const [onlineUsers, setOnlineUsers] = useState([]);
-  const [typingUser, setTypingUser] = useState("");
-  const [theme, setTheme] = useState("light");
-  const typingTimeoutRef = useRef(null);
+  /* 🔐 AUTH */
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [user, setUser] = useState(null);
   const [authStep, setAuthStep] = useState("login"); // login | otp
   const [otpPayload, setOtpPayload] = useState(null);
-  const logout = () => {
-    localStorage.clear();
-    setIsAuthenticated(false);
-    setUser(null);
-    setAuthStep("login");
-  };
 
+  /* 💬 CHAT */
+  const [conversations, setConversations] = useState([]);
+  const [selectedConversation, setSelectedConversation] = useState(null);
+  const [chat, setChat] = useState([]);
+  const [message, setMessage] = useState("");
 
-  /* 🔹 Auto Login */
+  /* 🔹 AUTO LOGIN */
   useEffect(() => {
     const token = localStorage.getItem("token");
     const savedUser = localStorage.getItem("user");
 
     if (token && savedUser) {
-      setIsAuthenticated(true);
       setUser(JSON.parse(savedUser));
+      setIsAuthenticated(true);
     }
   }, []);
 
-
-  /* 🌙 Theme */
+  /* 🔌 CONNECT SOCKET AFTER LOGIN */
   useEffect(() => {
-    document.documentElement.setAttribute("data-theme", theme);
-  }, [theme]);
+    if (!isAuthenticated || !user?.phoneNumber) return;
 
-  /* 🟢 Online users */
-  useEffect(() => {
-    socket.on("online_users", (users) => setOnlineUsers(users));
-    return () => socket.off("online_users");
-  }, []);
+    socket.connect();
+    socket.emit("user_online", user.phoneNumber);
 
-  /* 💬 Receive message (ROOM BASED) */
-  useEffect(() => {
     socket.on("receive_message", (msg) => {
       setChat((prev) => [...prev, msg]);
     });
-    return () => socket.off("receive_message");
-  }, []);
 
-  /* ✍️ Typing */
-  useEffect(() => {
-    socket.on("user_typing", setTypingUser);
-    socket.on("user_stop_typing", () => setTypingUser(""));
     return () => {
-      socket.off("user_typing");
-      socket.off("user_stop_typing");
+      socket.off("receive_message");
     };
-  }, []);
+  }, [isAuthenticated, user]);
 
-  /* 🔹 Load conversations when username is set */
+  /* 📥 LOAD CONVERSATIONS */
   useEffect(() => {
-    if (!username) return;
+    if (!user?.phoneNumber) return;
 
     axios
-      .get(`http://localhost:5000/conversations/${username}`)
+      .get(`http://localhost:5000/conversations/${user.phoneNumber}`)
       .then((res) => setConversations(res.data))
       .catch(console.error);
-  }, [username]);
+  }, [user]);
 
-  /* 🔹 Open chat (JOIN ROOM + LOAD MESSAGES) */
-  const openChat = async (conversation) => {
-    setSelectedConversation(conversation);
-    socket.emit("join_conversation", conversation._id);
-
-    const res = await axios.get(
-      `http://localhost:5000/messages/${conversation._id}`
-    );
-    setChat(res.data);
+  /* 🔓 LOGOUT */
+  const logout = () => {
+    localStorage.clear();
+    socket.disconnect();
+    setUser(null);
+    setIsAuthenticated(false);
+    setAuthStep("login");
+    setSelectedConversation(null);
+    setChat([]);
   };
 
-  /* 🔹 Send message */
-  const sendMessage = () => {
-    if (!message.trim() || !selectedConversation) return;
-
-    socket.emit("send_message", {
-      conversationId: selectedConversation._id,
-      sender: username,
-      content: message,
-    });
-
-    setMessage("");
-    socket.emit("stop_typing");
-  };
-  /* 🔐 AUTH GATE — MUST BE BEFORE CHAT UI RETURN */
+  /* 🔐 AUTH GATE */
   if (!isAuthenticated) {
     if (authStep === "login") {
       return (
@@ -119,55 +82,56 @@ function App() {
       );
     }
 
-    if (authStep === "otp") {
+    if (authStep === "otp" && otpPayload) {
       return (
         <OtpVerify
           payload={otpPayload}
-          onSuccess={(data) => {
-            localStorage.setItem("token", data.token);
-            localStorage.setItem("user", JSON.stringify(data.user));
-            setUser(data.user);
+          onSuccess={(userData) => {
+            setUser(userData);
             setIsAuthenticated(true);
           }}
         />
       );
     }
 
-    return <div>Loading...</div>;
+    return null;
   }
 
-
-
+  /* 🔓 CHAT UI */
   return (
-
     <div className="app-container">
-
-      {/* 🔹 SIDEBAR */}
-      <div className={`sidebar ${selectedConversation ? "hide-mobile" : ""}`}>
+      {/* SIDEBAR */}
+      <div className="sidebar">
         <div className="sidebar-header">
           <h3>Chatify</h3>
+          <button onClick={logout}>Logout</button>
         </div>
 
-        <input
-          className="username-input"
-          placeholder="Enter your username"
-          onBlur={(e) => {
-            setUsername(e.target.value);
-            socket.emit("user_online", e.target.value);
-          }}
-        />
-
         <div className="contacts">
+          {conversations.length === 0 && (
+            <p className="empty-chat">
+              Start conversations with your contacts
+            </p>
+          )}
+
           {conversations.map((c) => {
             const otherUser = c.participants.find(
-              (p) => p !== username
+              (p) => p !== user.phoneNumber
             );
 
             return (
               <div
                 key={c._id}
                 className="contact"
-                onClick={() => openChat(c)}
+                onClick={async () => {
+                  setSelectedConversation(c);
+                  socket.emit("join_conversation", c._id);
+
+                  const res = await axios.get(
+                    `http://localhost:5000/messages/${c._id}`
+                  );
+                  setChat(res.data);
+                }}
               >
                 <strong>{otherUser}</strong>
                 <p>{c.lastMessage || "Tap to chat"}</p>
@@ -176,60 +140,50 @@ function App() {
           })}
         </div>
       </div>
-      <button onClick={logout}>Logout</button>
 
-
-      {/* 🔹 CHAT WINDOW */}
-      <div className={`chat-window ${!selectedConversation ? "hide-mobile" : ""}`}>
-
-        <div className="chat-header">
-          <button className="back-btn" onClick={() => setSelectedConversation(null)}>
-            ←
-          </button>
-          <span>
-            {selectedConversation
-              ? selectedConversation.participants.find((p) => p !== username)
-              : "Select chat"}
-          </span>
-          <button className="toggle-btn" onClick={() => setTheme(theme === "light" ? "dark" : "light")}>
-            {theme === "light" ? "🌙" : "☀️"}
-          </button>
-        </div>
-
+      {/* CHAT WINDOW */}
+      <div className="chat-window">
         {!selectedConversation ? (
-          <div className="empty-chat">Select a chat to start messaging</div>
+          <div className="empty-chat">Select a chat</div>
         ) : (
           <>
+            <div className="chat-header">
+              {
+                selectedConversation.participants.find(
+                  (p) => p !== user.phoneNumber
+                )
+              }
+            </div>
+
             <div className="chat-box">
               {chat.map((msg, i) => (
                 <div
                   key={i}
-                  className={`message ${msg.sender === username ? "you" : "other"
-                    }`}
+                  className={`message ${
+                    msg.sender === user.phoneNumber ? "you" : "other"
+                  }`}
                 >
-                  <strong>{msg.sender}</strong>
                   <div>{msg.content}</div>
                 </div>
               ))}
             </div>
 
-            {typingUser && typingUser !== username && (
-              <div className="typing-indicator">
-                ✍️ {typingUser} is typing...
-              </div>
-            )}
-
             <div className="chat-input">
               <input
                 placeholder="Type a message..."
                 value={message}
-                onChange={(e) => {
-                  setMessage(e.target.value);
-                  socket.emit("typing", username);
+                onChange={(e) => setMessage(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && message.trim()) {
+                    socket.emit("send_message", {
+                      conversationId: selectedConversation._id,
+                      sender: user.phoneNumber,
+                      content: message,
+                    });
+                    setMessage("");
+                  }
                 }}
-                onKeyDown={(e) => e.key === "Enter" && sendMessage()}
               />
-              <button onClick={sendMessage}>Send</button>
             </div>
           </>
         )}
@@ -239,4 +193,3 @@ function App() {
 }
 
 export default App;
-
