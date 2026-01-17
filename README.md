@@ -1,12 +1,16 @@
+## Chatify – Real-Time Chat Application
 
-# Real-Time Chat Application
+Chatify is a real-time web chat application built using Socket.IO and React.
 
-Run Backend:
-cd backend
-npm install
-npm start
+### Features
+- Real-time messaging
+- Online users tracking
+- Typing indicator
+- Clean and responsive UI
 
-Run Frontend:
-cd frontend
-npm install
-npm run dev
+### Tech Stack
+- React
+- Node.js
+- Express
+- Socket.IO
+
