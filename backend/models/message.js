@@ -15,13 +15,17 @@ const messageSchema = new mongoose.Schema(
       type: String,
       required: true,
     },
+    status: {
+      type: String,
+      enum: ["sent", "seen"],
+      default: "sent",
+    },
   },
   { timestamps: true }
   
 );
 
-// 🚀 Optimized for chat history loading
-messageSchema.index({ conversationId: 1, createdAt: 1 });
+
 
 module.exports = mongoose.model("Message", messageSchema);
 

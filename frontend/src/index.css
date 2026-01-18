@@ -123,6 +123,13 @@ body {
   flex-direction: column;
   gap: 4px;
   word-wrap: break-word;
+  position: relative;
+}
+.message-status {
+  font-size: 12px;
+  opacity: 0.8;
+  margin-top: 4px;
+  text-align: right;
 }
 
 /* Your message */

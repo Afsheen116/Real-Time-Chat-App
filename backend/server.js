@@ -55,20 +55,27 @@ io.on("connection", (socket) => {
     socket.join(conversationId);
     console.log(`Socket ${socket.id} joined room ${conversationId}`);
   });
-  socket.on("message_seen", async (messageId) => {
-  const message = await Message.findByIdAndUpdate(
-    messageId,
-    { status: "seen" },
-    { new: true }
-  );
+  socket.on("message_seen", async ({ messageId }) => {
+    try {
+      const message = await Message.findById(messageId);
 
-  if (message) {
-    io.to(message.conversationId.toString()).emit(
-      "message_status_update",
-      message
-    );
-  }
-});
+      if (!message || message.status === "seen") return;
+
+      message.status = "seen";
+      await message.save();
+
+      io.to(message.conversationId.toString()).emit(
+        "message_status_update",
+        {
+          messageId: message._id,
+          status: "seen",
+        }
+      );
+    } catch (err) {
+      console.error("Seen update error:", err.message);
+    }
+  });
+
 
 
   /* ✍️ Typing */

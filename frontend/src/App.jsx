@@ -94,11 +94,32 @@ function App() {
     if (!selectedConversation || !chat.length) return;
 
     chat.forEach((msg) => {
-      if (msg.sender !== user.phoneNumber && msg.status !== "seen") {
-        socket.emit("message_seen", msg._id);
+      if (
+        msg.sender !== user.phoneNumber &&
+        msg.status !== "seen"
+      ) {
+        socket.emit("message_seen", {
+          messageId: msg._id,
+        });
       }
     });
-  }, [chat, selectedConversation, user]);
+  }, [chat, selectedConversation]);
+
+  useEffect(() => {
+    socket.on("message_status_update", ({ messageId, status }) => {
+      setChat((prev) =>
+        prev.map((msg) =>
+          msg._id === messageId
+            ? { ...msg, status }
+            : msg
+        )
+      );
+    });
+
+    return () => socket.off("message_status_update");
+  }, []);
+
+
 
   /* ✍️ HANDLE TYPING */
   const handleTyping = (value) => {
@@ -228,21 +249,19 @@ function App() {
               )}
             </div>
 
-            <div className="chat-box">
-              {chat.map((msg) => (
-                <div
-                  key={msg._id}
-                  className={`message ${
-                    msg.sender === user.phoneNumber ? "you" : "other"
-                  }`}
-                >
-                  {msg.content}
-                  <span className="status">
-                    {msg.status === "seen" ? "✔✔" : "✔"}
-                  </span>
+            <div
+              className={`message ${msg.sender === user.phoneNumber ? "you" : "other"
+                }`}
+            >
+              <div className="message-content">{msg.content}</div>
+
+              {msg.sender === user.phoneNumber && (
+                <div className="message-status">
+                  {msg.status === "seen" ? "✔✔" : "✔"}
                 </div>
-              ))}
+              )}
             </div>
+
 
             {typingUser && (
               <div className="typing-indicator">
