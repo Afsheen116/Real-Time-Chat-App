@@ -17,6 +17,7 @@ const messageSchema = new mongoose.Schema(
     },
   },
   { timestamps: true }
+  
 );
 
 // 🚀 Optimized for chat history loading

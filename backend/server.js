@@ -17,7 +17,7 @@ const authRoutes = require("./routes/authRoutes");
 const conversationRoutes = require("./routes/conversationRoutes");
 const messageRoutes = require("./routes/messageRoutes");
 
-/* 🔹 App init (MUST COME FIRST) */
+/* 🔹 App init */
 const app = express();
 app.use(cors());
 app.use(express.json());
@@ -40,40 +40,79 @@ io.on("connection", (socket) => {
   console.log("User connected:", socket.id);
 
   /* 🟢 User online */
-  socket.on("user_online", (username) => {
-    socket.username = username;
-    if (!onlineUsers.includes(username)) onlineUsers.push(username);
+  socket.on("user_online", (phoneNumber) => {
+    socket.phoneNumber = phoneNumber;
+
+    if (!onlineUsers.includes(phoneNumber)) {
+      onlineUsers.push(phoneNumber);
+    }
+
     io.emit("online_users", onlineUsers);
   });
 
-  /* 🔗 Join conversation */
+  /* 🔗 Join conversation room */
   socket.on("join_conversation", (conversationId) => {
     socket.join(conversationId);
+    console.log(`Socket ${socket.id} joined room ${conversationId}`);
+  });
+  socket.on("message_seen", async (messageId) => {
+  const message = await Message.findByIdAndUpdate(
+    messageId,
+    { status: "seen" },
+    { new: true }
+  );
+
+  if (message) {
+    io.to(message.conversationId.toString()).emit(
+      "message_status_update",
+      message
+    );
+  }
+});
+
+
+  /* ✍️ Typing */
+  socket.on("typing", ({ conversationId, user }) => {
+    socket.to(conversationId).emit("user_typing", user);
+  });
+
+  socket.on("stop_typing", (conversationId) => {
+    socket.to(conversationId).emit("user_stop_typing");
   });
 
   /* 💬 Send message */
   socket.on("send_message", async ({ conversationId, sender, content }) => {
-    if (!conversationId || !sender || !content) return;
+    try {
+      if (!conversationId || !sender || !content) return;
 
-    const message = await Message.create({
-      conversationId,
-      sender,
-      content,
-    });
+      const message = await Message.create({
+        conversationId,
+        sender,
+        content,
+        status: "sent",
+      });
 
-    await Conversation.findByIdAndUpdate(conversationId, {
-      lastMessage: content,
-    });
+      await Conversation.findByIdAndUpdate(conversationId, {
+        lastMessage: content,
+        updatedAt: new Date(),
+      });
 
-    io.to(conversationId).emit("receive_message", message);
+      // ✅ Emit to ALL users in room (sender + receiver)
+      io.to(conversationId).emit("receive_message", message);
+    } catch (err) {
+      console.error("Error sending message:", err.message);
+    }
   });
 
   /* 🔴 Disconnect */
   socket.on("disconnect", () => {
-    if (socket.username) {
-      onlineUsers = onlineUsers.filter((u) => u !== socket.username);
+    if (socket.phoneNumber) {
+      onlineUsers = onlineUsers.filter(
+        (u) => u !== socket.phoneNumber
+      );
       io.emit("online_users", onlineUsers);
     }
+
     console.log("User disconnected:", socket.id);
   });
 });
