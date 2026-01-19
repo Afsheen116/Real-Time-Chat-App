@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import axios from "axios";
-import "./index.css";
+import "./otp.css";
 
 function OtpVerify({ payload, onSuccess }) {
   const [otp, setOtp] = useState(Array(6).fill(""));
@@ -95,7 +95,7 @@ function OtpVerify({ payload, onSuccess }) {
 
         {error && <p className="otp-error">{error}</p>}
 
-        <button onClick={verifyOtp}>Verify & Continue</button>
+        <button className="verify-btn" onClick={verifyOtp}>Verify & Continue</button>
 
         {timer > 0 ? (
           <p className="timer">Resend OTP in {timer}s</p>
