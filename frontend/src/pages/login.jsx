@@ -1,41 +1,53 @@
 import { useState } from "react";
-import axios from "axios";
 
 export default function Login({ onOtpSent }) {
-  const [phoneNumber, setPhoneNumber] = useState("");
+  const [phone, setPhone] = useState("");
   const [loading, setLoading] = useState(false);
 
-  const sendOtp = async () => {
-    if (!phoneNumber) return alert("Enter phone number");
+  const handleSubmit = async () => {
+    if (phone.length !== 10) return alert("Enter valid 10 digit number");
 
     setLoading(true);
-    try {
-      await axios.post("http://localhost:5000/auth/request", {
-        phoneNumber,
-      });
 
-      onOtpSent({ phoneNumber });
-    } catch (err) {
-      alert("Failed to send OTP");
-    } finally {
+    // simulate OTP API (you already have backend)
+    setTimeout(() => {
+      onOtpSent({ phoneNumber: phone });
       setLoading(false);
-    }
+    }, 800);
   };
 
   return (
-    <div className="auth-container">
-      <h2>Welcome to Chatify</h2>
+    <div className="login-wrapper">
+      <div className="login-glass">
+        <h1 className="login-title">Chatify</h1>
+        <p className="login-subtitle">
+          Real-time conversations. Reimagined.
+        </p>
 
-      <input
-        placeholder="+91XXXXXXXXXX"
-        value={phoneNumber}
-        onChange={(e) => setPhoneNumber(e.target.value)}
-      />
+        <div className="login-input-group">
+          <span className="country-code">+91</span>
+          <input
+            type="tel"
+            placeholder="Enter phone number"
+            value={phone}
+            onChange={(e) => setPhone(e.target.value)}
+          />
+        </div>
 
-      <button onClick={sendOtp} disabled={loading}>
-        {loading ? "Sending..." : "Continue"}
-      </button>
+        <button
+          className="login-btn"
+          onClick={handleSubmit}
+          disabled={loading}
+        >
+          {loading ? "Sending OTP..." : "Continue"}
+        </button>
+
+        <p className="login-footer">
+          Secured with OTP authentication 🔒
+        </p>
+      </div>
     </div>
   );
 }
+
 
