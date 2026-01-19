@@ -9,23 +9,25 @@ import OtpVerify from "./pages/OTPVerify";
 const socket = io("http://localhost:5000", { autoConnect: false });
 
 function App() {
-  /* 🔐 AUTH */
+  /* ================= AUTH ================= */
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [user, setUser] = useState(null);
   const [authStep, setAuthStep] = useState("login");
   const [otpPayload, setOtpPayload] = useState(null);
 
-  /* 💬 CHAT */
+  const phoneNumber = user?.phoneNumber; // ✅ SAFE ACCESS
+
+  /* ================= CHAT ================= */
   const [conversations, setConversations] = useState([]);
   const [selectedConversation, setSelectedConversation] = useState(null);
   const [chat, setChat] = useState([]);
   const [message, setMessage] = useState("");
 
-  /* ✍️ TYPING */
+  /* ================= TYPING ================= */
   const [typingUser, setTypingUser] = useState("");
   const typingTimeoutRef = useRef(null);
 
-  /* 🔹 AUTO LOGIN */
+  /* ================= AUTO LOGIN ================= */
   useEffect(() => {
     const token = localStorage.getItem("token");
     const savedUser = localStorage.getItem("user");
@@ -36,37 +38,31 @@ function App() {
     }
   }, []);
 
-  /* 🔌 SOCKET CONNECT (SINGLE SOURCE OF TRUTH) */
+  /* ================= SOCKET CONNECT ================= */
   useEffect(() => {
-    if (!isAuthenticated || !user?.phoneNumber) return;
+    if (!isAuthenticated || !phoneNumber) return;
 
     socket.connect();
-    socket.emit("user_online", user.phoneNumber);
+    socket.emit("user_online", phoneNumber);
 
     socket.on("receive_message", (msg) => {
-      setChat((prev) => {
-        // ignore own echoed message
-        if (msg.sender === user.phoneNumber) return prev;
-        return [...prev, msg];
-      });
+      setChat((prev) =>
+        prev.some((m) => m._id === msg._id) ? prev : [...prev, msg]
+      );
     });
 
-    socket.on("user_typing", ({ conversationId, user: typingUser }) => {
-      if (selectedConversation?._id === conversationId) {
-        setTypingUser(typingUser);
-      }
+    socket.on("user_typing", (user) => {
+      setTypingUser(user);
     });
 
-    socket.on("user_stop_typing", ({ conversationId }) => {
-      if (selectedConversation?._id === conversationId) {
-        setTypingUser("");
-      }
+    socket.on("user_stop_typing", () => {
+      setTypingUser("");
     });
 
-    socket.on("message_status_update", (updatedMsg) => {
+    socket.on("message_status_update", ({ messageId, status }) => {
       setChat((prev) =>
         prev.map((m) =>
-          m._id === updatedMsg._id ? updatedMsg : m
+          m._id === messageId ? { ...m, status } : m
         )
       );
     });
@@ -77,92 +73,61 @@ function App() {
       socket.off("user_stop_typing");
       socket.off("message_status_update");
     };
-  }, [isAuthenticated, user, selectedConversation]);
+  }, [isAuthenticated, phoneNumber]);
 
-  /* 📥 LOAD CONVERSATIONS */
+  /* ================= LOAD CONVERSATIONS ================= */
   useEffect(() => {
-    if (!user?.phoneNumber) return;
+    if (!phoneNumber) return;
 
     axios
-      .get(`http://localhost:5000/conversations/${user.phoneNumber}`)
+      .get(`http://localhost:5000/conversations/${phoneNumber}`)
       .then((res) => setConversations(res.data))
       .catch(console.error);
-  }, [user]);
+  }, [phoneNumber]);
 
-  /* 👀 MARK MESSAGES AS SEEN */
+  /* ================= MARK AS SEEN ================= */
   useEffect(() => {
-    if (!selectedConversation || !chat.length) return;
+    if (!selectedConversation || !phoneNumber) return;
 
     chat.forEach((msg) => {
-      if (
-        msg.sender !== user.phoneNumber &&
-        msg.status !== "seen"
-      ) {
-        socket.emit("message_seen", {
-          messageId: msg._id,
-        });
+      if (msg.sender !== phoneNumber && msg.status !== "seen") {
+        socket.emit("message_seen", { messageId: msg._id });
       }
     });
-  }, [chat, selectedConversation]);
+  }, [chat, selectedConversation, phoneNumber]);
 
-  useEffect(() => {
-    socket.on("message_status_update", ({ messageId, status }) => {
-      setChat((prev) =>
-        prev.map((msg) =>
-          msg._id === messageId
-            ? { ...msg, status }
-            : msg
-        )
-      );
-    });
-
-    return () => socket.off("message_status_update");
-  }, []);
-
-
-
-  /* ✍️ HANDLE TYPING */
+  /* ================= TYPING ================= */
   const handleTyping = (value) => {
     setMessage(value);
-    if (!selectedConversation) return;
+    if (!selectedConversation || !phoneNumber) return;
 
     socket.emit("typing", {
       conversationId: selectedConversation._id,
-      user: user.phoneNumber,
+      user: phoneNumber,
     });
 
     clearTimeout(typingTimeoutRef.current);
     typingTimeoutRef.current = setTimeout(() => {
-      socket.emit("stop_typing", selectedConversation._id);
+      socket.emit("stop_typing", {
+        conversationId: selectedConversation._id,
+      });
     }, 800);
   };
 
-  /* 📤 SEND MESSAGE */
+  /* ================= SEND MESSAGE ================= */
   const sendMessage = () => {
-    if (!message.trim() || !selectedConversation) return;
-
-    const optimisticMsg = {
-      _id: Date.now(),
-      conversationId: selectedConversation._id,
-      sender: user.phoneNumber,
-      content: message,
-      status: "delivered",
-    };
-
-    // optimistic UI
-    setChat((prev) => [...prev, optimisticMsg]);
+    if (!message.trim() || !selectedConversation || !phoneNumber) return;
 
     socket.emit("send_message", {
       conversationId: selectedConversation._id,
-      sender: user.phoneNumber,
+      sender: phoneNumber,
       content: message,
     });
 
-    socket.emit("stop_typing", selectedConversation._id);
     setMessage("");
   };
 
-  /* 🔓 LOGOUT */
+  /* ================= LOGOUT ================= */
   const logout = () => {
     localStorage.clear();
     socket.disconnect();
@@ -173,7 +138,7 @@ function App() {
     setAuthStep("login");
   };
 
-  /* 🔐 AUTH GATE */
+  /* ================= AUTH GATE ================= */
   if (!isAuthenticated) {
     if (authStep === "login") {
       return (
@@ -201,9 +166,10 @@ function App() {
     return null;
   }
 
-  /* 💬 UI */
+  /* ================= UI ================= */
   return (
     <div className="app-container">
+      {/* SIDEBAR */}
       <div className="sidebar">
         <div className="sidebar-header">
           <h3>Chatify</h3>
@@ -212,9 +178,9 @@ function App() {
 
         <div className="contacts">
           {conversations.map((c) => {
-            const otherUser = c.participants.find(
-              (p) => p !== user.phoneNumber
-            );
+            const otherUser = phoneNumber
+              ? c.participants.find((p) => p !== phoneNumber)
+              : "";
 
             return (
               <div
@@ -238,6 +204,7 @@ function App() {
         </div>
       </div>
 
+      {/* CHAT WINDOW */}
       <div className="chat-window">
         {!selectedConversation ? (
           <div className="empty-chat">Select a chat</div>
@@ -245,23 +212,37 @@ function App() {
           <>
             <div className="chat-header">
               {selectedConversation.participants.find(
-                (p) => p !== user.phoneNumber
+                (p) => p !== phoneNumber
               )}
             </div>
 
-            <div
-              className={`message ${msg.sender === user.phoneNumber ? "you" : "other"
-                }`}
-            >
-              <div className="message-content">{msg.content}</div>
+            <div className="chat-box">
+              {chat.map((msg) => (
+                <div
+                  key={msg._id}
+                  className={`message ${
+                    msg.sender === phoneNumber ? "you" : "other"
+                  }`}
+                >
+                  <div>{msg.content}</div>
 
-              {msg.sender === user.phoneNumber && (
-                <div className="message-status">
-                  {msg.status === "seen" ? "✔✔" : "✔"}
+                  <div className="message-meta">
+                    <small>
+                      {new Date(msg.createdAt).toLocaleTimeString([], {
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })}
+                    </small>
+
+                    {msg.sender === phoneNumber && (
+                      <span className="ticks">
+                        {msg.status === "seen" ? "✔✔" : "✔"}
+                      </span>
+                    )}
+                  </div>
                 </div>
-              )}
+              ))}
             </div>
-
 
             {typingUser && (
               <div className="typing-indicator">

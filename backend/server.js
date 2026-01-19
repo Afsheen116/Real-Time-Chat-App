@@ -22,7 +22,6 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-/* 🔹 API Routes */
 app.use("/auth", authRoutes);
 app.use("/conversations", conversationRoutes);
 app.use("/messages", messageRoutes);
@@ -39,7 +38,7 @@ let onlineUsers = [];
 io.on("connection", (socket) => {
   console.log("User connected:", socket.id);
 
-  /* 🟢 User online */
+  /* 🟢 USER ONLINE */
   socket.on("user_online", (phoneNumber) => {
     socket.phoneNumber = phoneNumber;
 
@@ -50,15 +49,47 @@ io.on("connection", (socket) => {
     io.emit("online_users", onlineUsers);
   });
 
-  /* 🔗 Join conversation room */
+  /* 🔗 JOIN CONVERSATION */
   socket.on("join_conversation", (conversationId) => {
     socket.join(conversationId);
-    console.log(`Socket ${socket.id} joined room ${conversationId}`);
   });
+
+  /* ✍️ TYPING */
+  socket.on("typing", ({ conversationId, user }) => {
+    socket.to(conversationId).emit("user_typing", user);
+  });
+
+  socket.on("stop_typing", ({ conversationId }) => {
+    socket.to(conversationId).emit("user_stop_typing");
+  });
+
+  /* 💬 SEND MESSAGE (✔ DELIVERED) */
+  socket.on("send_message", async ({ conversationId, sender, content }) => {
+    try {
+      if (!conversationId || !sender || !content) return;
+
+      const message = await Message.create({
+        conversationId,
+        sender,
+        content,
+        status: "sent",
+      });
+
+      await Conversation.findByIdAndUpdate(conversationId, {
+        lastMessage: content,
+        updatedAt: new Date(),
+      });
+
+      io.to(conversationId).emit("receive_message", message);
+    } catch (err) {
+      console.error("Send message error:", err.message);
+    }
+  });
+
+  /* 👀 MESSAGE SEEN (✔✔) */
   socket.on("message_seen", async ({ messageId }) => {
     try {
       const message = await Message.findById(messageId);
-
       if (!message || message.status === "seen") return;
 
       message.status = "seen";
@@ -76,42 +107,7 @@ io.on("connection", (socket) => {
     }
   });
 
-
-
-  /* ✍️ Typing */
-  socket.on("typing", ({ conversationId, user }) => {
-    socket.to(conversationId).emit("user_typing", user);
-  });
-
-  socket.on("stop_typing", (conversationId) => {
-    socket.to(conversationId).emit("user_stop_typing");
-  });
-
-  /* 💬 Send message */
-  socket.on("send_message", async ({ conversationId, sender, content }) => {
-    try {
-      if (!conversationId || !sender || !content) return;
-
-      const message = await Message.create({
-        conversationId,
-        sender,
-        content,
-        status: "sent",
-      });
-
-      await Conversation.findByIdAndUpdate(conversationId, {
-        lastMessage: content,
-        updatedAt: new Date(),
-      });
-
-      // ✅ Emit to ALL users in room (sender + receiver)
-      io.to(conversationId).emit("receive_message", message);
-    } catch (err) {
-      console.error("Error sending message:", err.message);
-    }
-  });
-
-  /* 🔴 Disconnect */
+  /* 🔴 DISCONNECT */
   socket.on("disconnect", () => {
     if (socket.phoneNumber) {
       onlineUsers = onlineUsers.filter(
