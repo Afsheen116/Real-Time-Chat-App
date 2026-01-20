@@ -44,37 +44,41 @@ function OtpVerify({ payload, onSuccess }) {
   };
 
   /* 🔐 VERIFY OTP */
-  const verifyOtp = async () => {
-    const finalOtp = otp.join("");
-    if (finalOtp.length !== 6) {
-      setError("Invalid OTP");
-      return;
-    }
+const verifyOtp = async () => {
+  const finalOtp = otp.join("").trim();
 
-    try {
-      const res = await axios.post(
-        "http://localhost:5000/auth/verify-otp",
-        { ...payload, otp: finalOtp }
-      );
+  if (finalOtp.length !== 6) {
+    setError("Invalid OTP");
+    return;
+  }
 
-      localStorage.setItem("token", res.data.token);
-      localStorage.setItem("user", JSON.stringify(res.data.user));
-      onSuccess(res.data.user);
-    } catch {
-      setError("Wrong OTP");
-      setOtp(Array(6).fill(""));
-      inputsRef.current[0].focus();
-    }
-  };
+  try {
+    const res = await axios.post(
+      "http://localhost:5000/auth/verify-otp",
+      {
+        phoneNumber: payload.phoneNumber,
+        otp: finalOtp,
+      }
+    );
 
-  /* 🔁 RESEND */
-  const resendOtp = async () => {
-    setTimer(30);
-    setError("");
-    await axios.post("http://localhost:5000/auth/send-otp", {
-      phoneNumber: payload.phoneNumber,
-    });
-  };
+    localStorage.setItem("token", res.data.token);
+    localStorage.setItem("user", JSON.stringify(res.data.user));
+    onSuccess(res.data.user);
+  } catch (err) {
+    console.error("OTP verify failed:", err.response?.data);
+    setError("Wrong OTP");
+    setOtp(Array(6).fill(""));
+    inputsRef.current[0].focus();
+  }
+};
+
+/*Resend OTP*/
+  const resendOtp = () => {
+  setTimer(30);
+  setError("");
+  setOtp(Array(6).fill(""));
+  inputsRef.current[0].focus();
+};
 
   return (
     <div className="otp-page">
